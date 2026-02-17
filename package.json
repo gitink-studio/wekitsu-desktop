@@ -1,6 +1,7 @@
 {
   "name": "wekitsu-desktop",
-  "version": "0.0.2",
+  "productName": "Wekitsu Desktop",
+  "version": "0.0.3",
   "description": "wekitsu desktop is an electron wrapper for the web application wekitsu",
   "repository": "gitink-studio/wekitsu-desktop",
   "main": "dist/main.cjs",

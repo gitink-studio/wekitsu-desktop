@@ -2,6 +2,11 @@ import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "ele
 import path from "path";
 import { updateElectronApp } from 'update-electron-app';
 
+// Handle creating/removing shortcuts on Windows when installing/uninstalling.
+if (require('electron-squirrel-startup')) {
+    app.quit();
+}
+
 updateElectronApp();
 
 const isDev = !app.isPackaged;
