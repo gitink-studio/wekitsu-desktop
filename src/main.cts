@@ -1,13 +1,11 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "electron";
 import path from "path";
-import { updateElectronApp } from 'update-electron-app';
+import { autoUpdater } from "electron-updater";
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-    app.quit();
-}
-
-updateElectronApp();
+// Connect the auto-updater to the main window for progress events if desired
+// autoUpdater.on('update-downloaded', () => {
+// autoUpdater.quitAndInstall(); 
+// });
 
 const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -36,6 +34,9 @@ if (!gotTheLock) {
     app.whenReady().then(() => {
         createWindow();
         createTray();
+
+        // precise "checkForUpdatesAndNotify" is good for default behavior
+        autoUpdater.checkForUpdatesAndNotify();
 
         ipcMain.handle('open-path', async (event: any, fullPath: any) => {
             try {
