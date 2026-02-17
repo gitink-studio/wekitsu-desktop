@@ -4,10 +4,11 @@
   "version": "0.0.6",
   "description": "wekitsu desktop is an electron wrapper for the web application wekitsu",
   "repository": "gitink-studio/wekitsu-desktop",
+  "node": "22.13.4",
   "main": "dist/main.cjs",
   "scripts": {
     "build": "tsc",
-    "start": "electron .",
+    "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
     "publish": "npm run build && electron-builder --publish always"
   },
@@ -38,7 +39,6 @@
   "author": "Joshua Jebadurai",
   "license": "ISC",
   "devDependencies": {
-    "@types/electron": "^1.6.10",
     "@types/node": "^22.13.4",
     "dotenv-cli": "^11.0.0",
     "electron": "^40.4.1",
