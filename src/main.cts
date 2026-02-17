@@ -1,5 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "electron";
 import path from "path";
+import { updateElectronApp } from 'update-electron-app';
+
+updateElectronApp();
 
 const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
