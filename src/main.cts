@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 
@@ -34,6 +34,7 @@ if (!gotTheLock) {
     app.whenReady().then(() => {
         createWindow();
         createTray();
+        createMenu();
 
         // precise "checkForUpdatesAndNotify" is good for default behavior
         autoUpdater.checkForUpdatesAndNotify();
@@ -66,7 +67,7 @@ function createWindow() {
         icon: icon
     });
 
-    mainWindow.setMenuBarVisibility(false);
+    mainWindow.setMenuBarVisibility(true);
 
     mainWindow.webContents.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     mainWindow.loadURL("https://wekitsu.weloadin.lol");
@@ -103,6 +104,52 @@ function createTray() {
             mainWindow?.show();
         }
     });
+}
+
+function createMenu() {
+    const template: Electron.MenuItemConstructorOptions[] = [
+        {
+            label: 'File',
+            submenu: [
+                { role: 'quit' }
+            ]
+        },
+        {
+            label: 'View',
+            submenu: [
+                { role: 'reload' },
+                { role: 'forceReload' },
+                { role: 'toggleDevTools' },
+                { type: 'separator' },
+                { role: 'resetZoom' },
+                { role: 'zoomIn' },
+                { role: 'zoomOut' },
+                { type: 'separator' },
+                { role: 'togglefullscreen' }
+            ]
+        },
+        {
+            label: 'Help',
+            submenu: [
+                {
+                    label: 'About',
+                    click: () => {
+                        dialog.showMessageBox(mainWindow!, {
+                            type: 'info',
+                            title: 'About',
+                            message: app.getName(),
+                            detail: `Version: ${app.getVersion()}\nElectron: ${process.versions.electron}\nChrome: ${process.versions.chrome}\nNode: ${process.versions.node}`,
+                            buttons: ['OK'],
+                            icon: icon
+                        });
+                    }
+                }
+            ]
+        }
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
 }
 
 app.on("window-all-closed", () => {
