@@ -7,7 +7,7 @@
   "node": "22.13.4",
   "main": "dist/main.cjs",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').copyFileSync('src/settings.html', 'dist/settings.html')\"",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
     "publish": "npm run build && electron-builder --publish always"
@@ -46,6 +46,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "electron-store": "^11.0.2",
     "electron-updater": "^6.7.3"
   }
 }
