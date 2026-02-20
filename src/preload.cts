@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openExplorer: (path: string) => ipcRenderer.invoke('open-path', path),
     getSettings: () => ipcRenderer.invoke('get-settings'),
     saveSettings: (settings: { workspacePath: string, remotePath: string }) => ipcRenderer.invoke('save-settings', settings),
-    selectDirectory: () => ipcRenderer.invoke('select-directory')
+    selectDirectory: () => ipcRenderer.invoke('select-directory'),
+    checkWorkspacePath: (relativePath: string) => ipcRenderer.invoke('check-path-exists', relativePath)
 });

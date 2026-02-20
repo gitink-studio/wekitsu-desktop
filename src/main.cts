@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, nativeImage, dialog } from "electron";
 import path from "path";
+import fs from "fs";
 import { autoUpdater } from "electron-updater";
 import Store from "electron-store";
 
@@ -111,6 +112,19 @@ function setupIpcHandlers() {
             return result.filePaths[0];
         }
     });
+
+    ipcMain.handle('check-path-exists', (event, relativePath: string) => {
+        const workspacePath = store.get("workspacePath") as string | undefined;
+        if (!workspacePath) return false;
+
+        try {
+            const fullPath = path.join(workspacePath, relativePath);
+            return fs.existsSync(fullPath);
+        } catch (error) {
+            console.error("Error checking path existence:", error);
+            return false;
+        }
+    });
 }
 
 function createSettingsWindow() {
@@ -160,7 +174,8 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(true);
 
     mainWindow.webContents.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-    mainWindow.loadURL("https://wekitsu.weloadin.lol");
+    // mainWindow.loadURL("https://wekitsu.weloadin.lol");
+    mainWindow.loadURL("http://192.168.88.197:8080");
     // mainWindow.webContents.openDevTools();
 }
 
