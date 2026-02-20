@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Menu, nativeImage, dialog } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 import Store from "electron-store";
@@ -13,8 +13,6 @@ const store = new Store();
 const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
-let isQuitting = false;
 
 // Simple red dot icon base64 for tray
 const iconBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADFJREFUOE9jZGRk/M+AhYGRkZGEHosGMDQwOAywYAByFNDXAAAAAElFTkSuQmCC';
@@ -41,7 +39,6 @@ if (!gotTheLock) {
     // Create myWindow, load the rest of the app, etc...
     app.whenReady().then(() => {
         setupIpcHandlers();
-        createTray();
         createMenu();
 
         // precise "checkForUpdatesAndNotify" is good for default behavior
@@ -139,8 +136,7 @@ function createSettingsWindow() {
 
     settingsWindow.on('closed', () => {
         settingsWindow = null;
-        // If they close settings and there's no main window open, we should quit unless tray handles it
-        if (!mainWindow && !isQuitting && process.platform !== "darwin") {
+        if (!mainWindow && process.platform !== "darwin") {
             app.quit();
         }
     });
@@ -166,55 +162,9 @@ function createWindow() {
     mainWindow.webContents.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     mainWindow.loadURL("https://wekitsu.weloadin.lol");
     // mainWindow.webContents.openDevTools();
-
-    mainWindow.on('close', (event) => {
-        if (!isQuitting) {
-            event.preventDefault();
-            mainWindow?.hide();
-            return false;
-        }
-        return true;
-    });
 }
 
-function createTray() {
-    tray = new Tray(icon);
-    const contextMenu = Menu.buildFromTemplate([
-        {
-            label: 'Show App', click: () => {
-                if (mainWindow) mainWindow.show();
-                else if (settingsWindow) settingsWindow.show();
-                else checkSettingsAndStart();
-            }
-        },
-        {
-            label: 'Settings', click: () => createSettingsWindow()
-        },
-        { type: 'separator' },
-        {
-            label: 'Quit', click: () => {
-                isQuitting = true;
-                app.quit();
-            }
-        }
-    ]);
-    tray.setToolTip('Wekitsu Desktop');
-    tray.setContextMenu(contextMenu);
 
-    tray.on('click', () => {
-        if (mainWindow?.isVisible()) {
-            mainWindow.hide();
-        } else if (mainWindow) {
-            mainWindow.show();
-        } else if (settingsWindow?.isVisible()) {
-            settingsWindow.hide();
-        } else if (settingsWindow) {
-            settingsWindow.show();
-        } else {
-            checkSettingsAndStart();
-        }
-    });
-}
 
 function createMenu() {
     const template: Electron.MenuItemConstructorOptions[] = [
