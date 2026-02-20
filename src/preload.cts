@@ -16,5 +16,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveSettings: (settings: { workspacePath: string, remotePath: string }) => ipcRenderer.invoke('save-settings', settings),
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     checkWorkspacePath: (relativePath: string) => ipcRenderer.invoke('check-path-exists', relativePath),
-    syncFromServer: (relativePath: string) => ipcRenderer.invoke('SyncFromServer', relativePath)
+    syncFromServer: (relativePath: string) => ipcRenderer.invoke('SyncFromServer', relativePath),
+    onSyncProgress: (callback: (event: any, filename: string) => void) => ipcRenderer.on('sync-progress', callback)
 });

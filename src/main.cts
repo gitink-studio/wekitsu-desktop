@@ -143,17 +143,46 @@ function setupIpcHandlers() {
         const sourcePath = path.join(remoteDir, relativePath);
         const destPath = path.join(workspaceDir, relativePath);
 
+        let progressWindow: BrowserWindow | null = new BrowserWindow({
+            width: 400,
+            height: 120,
+            frame: false,
+            parent: mainWindow || undefined,
+            modal: !!mainWindow,
+            webPreferences: {
+                preload: path.join(__dirname, "preload.cjs"),
+                nodeIntegration: false,
+                contextIsolation: true
+            },
+            resizable: false,
+            alwaysOnTop: true,
+            show: false
+        });
+
+        progressWindow.loadFile(path.join(__dirname, "sync-progress.html"));
+
+        // Wait for the window to actually be ready to show before blocking/working
+        await new Promise<void>((resolve) => {
+            if (!progressWindow) return resolve();
+            progressWindow.once('ready-to-show', () => {
+                progressWindow?.show();
+                // Add a tiny delay so the window has time to render its initial state
+                setTimeout(resolve, 50);
+            });
+        });
+
         // Dynamically import dir-compare and fs-extra to avoid issues if they aren't fully resolved yet, or just require them
         try {
             const dircompare = require('dir-compare');
             const fse = require('fs-extra');
 
             if (!fse.existsSync(sourcePath)) {
+                if (progressWindow) { progressWindow.close(); progressWindow = null; }
                 return { success: false, error: "Source path does not exist" };
             }
 
-            // Ensure destination exists
-            fse.ensureDirSync(destPath);
+            // Ensure destination exists asynchronously
+            await fse.ensureDir(destPath);
 
             const options = { compareContent: true, excludeFilter: '.wekitsu' };
             const res = await dircompare.compare(sourcePath, destPath, options);
@@ -163,19 +192,25 @@ function setupIpcHandlers() {
                     if (dif.state === 'left' || dif.state === 'distinct') {
                         const src = path.join(dif.path1, dif.name1);
                         const dst = path.join(destPath, dif.relativePath, dif.name1);
+                        console.log('syncing', src, 'to', dst);
+                        if (progressWindow && !progressWindow.isDestroyed()) {
+                            progressWindow.webContents.send('sync-progress', dif.name1);
+                        }
 
                         if (dif.type1 === 'directory') {
-                            fse.ensureDirSync(dst);
+                            await fse.ensureDir(dst);
                         } else if (dif.type1 === 'file') {
-                            fse.copySync(src, dst, { overwrite: true });
+                            await fse.copy(src, dst, { overwrite: true });
                         }
                     }
                 }
             }
 
+            if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
             return { success: true };
         } catch (error: any) {
             console.error("Error syncing from server:", error);
+            if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
             return { success: false, error: error.message };
         }
     });
