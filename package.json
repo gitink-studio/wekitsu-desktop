@@ -39,6 +39,7 @@
   "author": "Joshua Jebadurai",
   "license": "ISC",
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.13.4",
     "dotenv-cli": "^11.0.0",
     "electron": "^40.4.1",

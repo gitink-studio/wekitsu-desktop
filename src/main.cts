@@ -66,9 +66,15 @@ function setupIpcHandlers() {
     ipcMain.handle('open-path', async (event: any, fullPath: any) => {
         try {
             console.log('opening path', fullPath);
+            const workspacePath = store.get("workspacePath") as string | undefined;
+            if (!workspacePath) {
+                return "Workspace path is not configured.";
+            }
+
+            const targetPath = path.join(workspacePath, fullPath);
             // Security check: Ensure path does not contain '..' to prevent directory traversal attacks if not intended
             // const safePath = path.normalize(fullPath).replace(/^(\.\.(\/|\\|$))+/, '');
-            const result = await shell.openPath(`w:/${fullPath}`);
+            const result = await shell.openPath(targetPath);
             if (result) {
                 console.error(`Error opening path: ${result}`);
             }
@@ -123,6 +129,54 @@ function setupIpcHandlers() {
         } catch (error) {
             console.error("Error checking path existence:", error);
             return false;
+        }
+    });
+
+    ipcMain.handle('SyncFromServer', async (event, relativePath: string) => {
+        const workspaceDir = store.get("workspacePath") as string | undefined;
+        const remoteDir = store.get("remotePath") as string | undefined;
+
+        if (!workspaceDir || !remoteDir) {
+            return { success: false, error: "Paths not configured" };
+        }
+
+        const sourcePath = path.join(remoteDir, relativePath);
+        const destPath = path.join(workspaceDir, relativePath);
+
+        // Dynamically import dir-compare and fs-extra to avoid issues if they aren't fully resolved yet, or just require them
+        try {
+            const dircompare = require('dir-compare');
+            const fse = require('fs-extra');
+
+            if (!fse.existsSync(sourcePath)) {
+                return { success: false, error: "Source path does not exist" };
+            }
+
+            // Ensure destination exists
+            fse.ensureDirSync(destPath);
+
+            const options = { compareContent: true, excludeFilter: '.wekitsu' };
+            const res = await dircompare.compare(sourcePath, destPath, options);
+
+            if (res.diffSet) {
+                for (const dif of res.diffSet) {
+                    if (dif.state === 'left' || dif.state === 'distinct') {
+                        const src = path.join(dif.path1, dif.name1);
+                        const dst = path.join(destPath, dif.relativePath, dif.name1);
+
+                        if (dif.type1 === 'directory') {
+                            fse.ensureDirSync(dst);
+                        } else if (dif.type1 === 'file') {
+                            fse.copySync(src, dst, { overwrite: true });
+                        }
+                    }
+                }
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            console.error("Error syncing from server:", error);
+            return { success: false, error: error.message };
         }
     });
 }
