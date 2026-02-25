@@ -296,6 +296,25 @@ function setupIpcHandlers() {
         }
     });
 
+    ipcMain.handle('api-delete-snapshot', async (event, { taskId, commitId }: { taskId: string, commitId: string }) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/snapshots/${taskId}/${commitId}`, {
+                method: 'DELETE'
+            });
+            // DELETE usually returns 204 No Content
+            if (response.status === 204) {
+                return { success: true, status: response.status };
+            }
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API delete-snapshot error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+
 
     ipcMain.handle('api-rollback-snapshot', async (event, { taskId, commitId }: { taskId: string, commitId: string }) => {
         try {

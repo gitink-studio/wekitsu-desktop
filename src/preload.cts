@@ -18,9 +18,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkWorkspacePath: (relativePath: string) => ipcRenderer.invoke('check-path-exists', relativePath),
     syncFromServer: (relativePath: string) => ipcRenderer.invoke('SyncFromServer', relativePath),
     onSyncProgress: (callback: (event: any, filename: string) => void) => ipcRenderer.on('sync-progress', callback),
+    getTask: (taskId: string) => ipcRenderer.invoke('api-get-task', taskId),
     createAsset: (payload: any) => ipcRenderer.invoke('api-create-asset', payload),
     submitSnapshot: (payload: any) => ipcRenderer.invoke('api-snapshot', payload),
     getSnapshots: (taskId: string) => ipcRenderer.invoke('api-get-snapshots', taskId),
     rollbackSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-rollback-snapshot', { taskId, commitId }),
-    getTask: (taskId: string) => ipcRenderer.invoke('api-get-task', taskId)
+    deleteSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-delete-snapshot', { taskId, commitId })
 });
