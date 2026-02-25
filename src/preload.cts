@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createAsset: (payload: any) => ipcRenderer.invoke('api-create-asset', payload),
     submitSnapshot: (payload: any) => ipcRenderer.invoke('api-snapshot', payload),
     getSnapshots: (taskId: string) => ipcRenderer.invoke('api-get-snapshots', taskId),
-    rollbackSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-rollback-snapshot', { taskId, commitId })
+    rollbackSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-rollback-snapshot', { taskId, commitId }),
+    getTask: (taskId: string) => ipcRenderer.invoke('api-get-task', taskId)
 });

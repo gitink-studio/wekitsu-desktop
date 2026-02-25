@@ -284,6 +284,19 @@ function setupIpcHandlers() {
         }
     });
 
+    ipcMain.handle('api-get-task', async (event, taskId: string) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/get-task/${taskId}`);
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API get-task error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+
     ipcMain.handle('api-rollback-snapshot', async (event, { taskId, commitId }: { taskId: string, commitId: string }) => {
         try {
             const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
