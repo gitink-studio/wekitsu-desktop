@@ -47,6 +47,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.7.3"
   }

@@ -3,6 +3,9 @@ import path from "path";
 import fs from "fs";
 import { autoUpdater } from "electron-updater";
 import Store from "electron-store";
+import dotenv from "dotenv";
+
+dotenv.config({ path: app.isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '../.env') });
 
 const store = new Store();
 
@@ -214,6 +217,86 @@ function setupIpcHandlers() {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('api-create-asset', async (event, payload: any) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/createAsset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API createAsset error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('api-snapshot', async (event, payload: {
+        taskId: string, type: string, message: string, username?: string, userId?: string, bypassZip?: boolean,
+        thumbnailPath?: string, previewPath?: string
+    }) => {
+        try {
+            const formData = new FormData();
+            formData.append('taskId', payload.taskId);
+            formData.append('type', payload.type);
+            formData.append('message', payload.message);
+            if (payload.username) formData.append('username', payload.username);
+            if (payload.userId) formData.append('userId', payload.userId);
+            if (payload.bypassZip !== undefined) formData.append('bypassZip', payload.bypassZip.toString());
+
+            if (payload.thumbnailPath && fs.existsSync(payload.thumbnailPath)) {
+                const buffer = await fs.promises.readFile(payload.thumbnailPath);
+                const blob = new Blob([buffer], { type: 'image/png' });
+                formData.append('thumbnail', blob, path.basename(payload.thumbnailPath));
+            }
+
+            if (payload.previewPath && fs.existsSync(payload.previewPath)) {
+                const buffer = await fs.promises.readFile(payload.previewPath);
+                const blob = new Blob([buffer], { type: 'video/mp4' });
+                formData.append('preview', blob, path.basename(payload.previewPath));
+            }
+
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/snapshot`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API snapshot error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('api-get-snapshots', async (event, taskId: string) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/snapshots/${taskId}`);
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API get-snapshots error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('api-rollback-snapshot', async (event, { taskId, commitId }: { taskId: string, commitId: string }) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/snapshots/${taskId}/${commitId}/rollback`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API rollback-snapshot error:', error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 function createSettingsWindow() {
@@ -263,8 +346,8 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(true);
 
     mainWindow.webContents.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-    // mainWindow.loadURL("https://wekitsu.weloadin.lol");
-    mainWindow.loadURL("http://192.168.88.197:8080");
+    mainWindow.loadURL("http://localhost:8080");
+    // mainWindow.loadURL("https://192.168.88.189:8080");
     // mainWindow.webContents.openDevTools();
 }
 
