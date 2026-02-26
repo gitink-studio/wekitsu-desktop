@@ -5,7 +5,8 @@ import { autoUpdater } from "electron-updater";
 import Store from "electron-store";
 import dotenv from "dotenv";
 
-dotenv.config({ path: app.isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '../.env') });
+const isPackaged = process.mainModule?.filename.indexOf('app.asar') !== -1;
+dotenv.config({ path: isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '../.env') });
 
 const store = new Store();
 
@@ -135,16 +136,14 @@ function setupIpcHandlers() {
         }
     });
 
-    ipcMain.handle('SyncFromServer', async (event, relativePath: string) => {
+    ipcMain.handle('link-to-workspace', async (event, payload: { taskId: string, relativePath: string }) => {
         const workspaceDir = store.get("workspacePath") as string | undefined;
-        const remoteDir = store.get("remotePath") as string | undefined;
 
-        if (!workspaceDir || !remoteDir) {
-            return { success: false, error: "Paths not configured" };
+        if (!workspaceDir) {
+            return { success: false, error: "Workspace path not configured" };
         }
 
-        const sourcePath = path.join(remoteDir, relativePath);
-        const destPath = path.join(workspaceDir, relativePath);
+        const destPath = path.join(workspaceDir, payload.relativePath);
 
         let progressWindow: BrowserWindow | null = new BrowserWindow({
             width: 400,
@@ -164,56 +163,97 @@ function setupIpcHandlers() {
 
         progressWindow.loadFile(path.join(__dirname, "sync-progress.html"));
 
-        // Wait for the window to actually be ready to show before blocking/working
         await new Promise<void>((resolve) => {
             if (!progressWindow) return resolve();
             progressWindow.once('ready-to-show', () => {
                 progressWindow?.show();
-                // Add a tiny delay so the window has time to render its initial state
                 setTimeout(resolve, 50);
             });
         });
 
-        // Dynamically import dir-compare and fs-extra to avoid issues if they aren't fully resolved yet, or just require them
         try {
-            const dircompare = require('dir-compare');
-            const fse = require('fs-extra');
+            const extract = require('extract-zip');
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
 
-            if (!fse.existsSync(sourcePath)) {
-                if (progressWindow) { progressWindow.close(); progressWindow = null; }
-                return { success: false, error: "Source path does not exist" };
+            if (progressWindow && !progressWindow.isDestroyed()) {
+                progressWindow.webContents.send('sync-progress', 'Fetching snapshot info...');
             }
 
-            // Ensure destination exists asynchronously
-            await fse.ensureDir(destPath);
+            const snapshotRes = await fetch(`${apiUrl}/snapshots/${payload.taskId}`);
+            if (!snapshotRes.ok) {
+                throw new Error(`Failed to fetch snapshots: ${snapshotRes.statusText}`);
+            }
+            const snapshots = await snapshotRes.json();
 
-            const options = { compareContent: true, excludeFilter: '.wekitsu' };
-            const res = await dircompare.compare(sourcePath, destPath, options);
+            if (!snapshots || snapshots.length === 0) {
+                await fs.promises.mkdir(destPath, { recursive: true });
+                if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
+                return { success: true };
+            }
 
-            if (res.diffSet) {
-                for (const dif of res.diffSet) {
-                    if (dif.state === 'left' || dif.state === 'distinct') {
-                        const src = path.join(dif.path1, dif.name1);
-                        const dst = path.join(destPath, dif.relativePath, dif.name1);
-                        console.log('syncing', src, 'to', dst);
-                        if (progressWindow && !progressWindow.isDestroyed()) {
-                            progressWindow.webContents.send('sync-progress', dif.name1);
-                        }
+            const latestSource = snapshots.find((s: any) => s.type === 'source');
+            const latestExports = snapshots.find((s: any) => s.type === 'exports');
+            const toDownload = [latestSource, latestExports].filter(Boolean);
 
-                        if (dif.type1 === 'directory') {
-                            await fse.ensureDir(dst);
-                        } else if (dif.type1 === 'file') {
-                            await fse.copy(src, dst, { overwrite: true });
-                        }
-                    }
+            for (const snap of toDownload) {
+                const commitId = snap.commitId;
+
+                if (progressWindow && !progressWindow.isDestroyed()) {
+                    progressWindow.webContents.send('sync-progress', `Downloading ${snap.type} zip...`);
                 }
+
+                const zipUrl = `${apiUrl}/assets/${payload.taskId}/${commitId}/contents.zip`;
+                const zipRes = await fetch(zipUrl);
+
+                if (!zipRes.ok) {
+                    if (zipRes.status === 404) {
+                        // Skip if the zip is missing for this type
+                        continue;
+                    }
+                    throw new Error(`Failed to download contents.zip for ${snap.type}: ${zipRes.statusText}`);
+                }
+
+                const arrayBuffer = await zipRes.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+
+                const snapDestPath = path.join(destPath, snap.type);
+                await fs.promises.mkdir(snapDestPath, { recursive: true });
+                const tempZipPath = path.join(app.getPath('temp'), `contents-${snap.type}-${payload.taskId}-${Date.now()}.zip`);
+                await fs.promises.writeFile(tempZipPath, buffer);
+
+                if (progressWindow && !progressWindow.isDestroyed()) {
+                    progressWindow.webContents.send('sync-progress', `Extracting ${snap.type}...`);
+                }
+
+                await extract(tempZipPath, { dir: snapDestPath });
+                await fs.promises.unlink(tempZipPath);
             }
 
             if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
             return { success: true };
         } catch (error: any) {
-            console.error("Error syncing from server:", error);
+            console.error("Error linking to workspace:", error);
             if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('unlink-from-workspace', async (event, relativePath: string) => {
+        const workspaceDir = store.get("workspacePath") as string | undefined;
+
+        if (!workspaceDir) {
+            return { success: false, error: "Workspace path not configured" };
+        }
+
+        try {
+            const targetPath = path.join(workspaceDir, relativePath);
+            if (fs.existsSync(targetPath)) {
+                await fs.promises.rm(targetPath, { recursive: true, force: true });
+                await fs.promises.mkdir(targetPath, { recursive: true });
+            }
+            return { success: true };
+        } catch (error: any) {
+            console.error("Error unlinking from workspace:", error);
             return { success: false, error: error.message };
         }
     });
