@@ -230,6 +230,11 @@ function setupIpcHandlers() {
             }
 
             if (progressWindow && !progressWindow.isDestroyed()) { progressWindow.close(); progressWindow = null; }
+
+            const linkedTasks = store.get("linkedTasks", {}) as Record<string, string>;
+            linkedTasks[payload.taskId] = payload.relativePath;
+            store.set("linkedTasks", linkedTasks);
+
             return { success: true };
         } catch (error: any) {
             console.error("Error linking to workspace:", error);
@@ -238,7 +243,7 @@ function setupIpcHandlers() {
         }
     });
 
-    ipcMain.handle('unlink-from-workspace', async (event, relativePath: string) => {
+    ipcMain.handle('unlink-from-workspace', async (event, payload: { taskId: string, relativePath: string }) => {
         const workspaceDir = store.get("workspacePath") as string | undefined;
 
         if (!workspaceDir) {
@@ -246,11 +251,38 @@ function setupIpcHandlers() {
         }
 
         try {
-            const targetPath = path.join(workspaceDir, relativePath);
+            const targetPath = path.join(workspaceDir, payload.relativePath);
             if (fs.existsSync(targetPath)) {
+                let currentWindow = mainWindow;
+                if (!currentWindow || currentWindow.isDestroyed()) {
+                    const windows = BrowserWindow.getAllWindows();
+                    currentWindow = windows.length > 0 ? windows[0] : null;
+                }
+
+                const dialogOpts = {
+                    type: 'warning' as const,
+                    buttons: ['Yes, delete it', 'Cancel'],
+                    defaultId: 1,
+                    title: 'Confirm Deletion',
+                    message: 'Are you sure you want to delete the local workspace asset folder?',
+                    detail: `This will permanently delete the folder: ${targetPath}`
+                };
+
+                const { response } = currentWindow
+                    ? await dialog.showMessageBox(currentWindow, dialogOpts)
+                    : await dialog.showMessageBox(dialogOpts);
+
+                if (response !== 0) {
+                    return { success: false, cancelled: true };
+                }
+
                 await fs.promises.rm(targetPath, { recursive: true, force: true });
-                await fs.promises.mkdir(targetPath, { recursive: true });
             }
+
+            const linkedTasks = store.get("linkedTasks", {}) as Record<string, string>;
+            delete linkedTasks[payload.taskId];
+            store.set("linkedTasks", linkedTasks);
+
             return { success: true };
         } catch (error: any) {
             console.error("Error unlinking from workspace:", error);
