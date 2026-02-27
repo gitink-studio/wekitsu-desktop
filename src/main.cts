@@ -4,6 +4,13 @@ import fs from "fs";
 import { autoUpdater } from "electron-updater";
 import Store from "electron-store";
 import dotenv from "dotenv";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
+import archiver from "archiver";
+
+if (ffmpegStatic) {
+    ffmpeg.setFfmpegPath(ffmpegStatic);
+}
 
 const isPackaged = process.mainModule?.filename.indexOf('app.asar') !== -1;
 dotenv.config({ path: isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '../.env') });
@@ -306,6 +313,63 @@ function setupIpcHandlers() {
         }
     });
 
+    ipcMain.handle('api-process-media', async (event, { filePath, type }: { filePath: string, type: 'thumbnail' | 'preview' }) => {
+        try {
+            const outPath = path.join(app.getPath('temp'), `processed-${type}-${Date.now()}.${type === 'thumbnail' ? 'png' : 'mp4'}`);
+
+            return new Promise((resolve, reject) => {
+                let command = ffmpeg(filePath);
+
+                if (type === 'thumbnail') {
+                    command = command
+                        .outputOptions([
+                            "-vf",
+                            "scale=500:281:force_original_aspect_ratio=decrease,pad=500:281:(ow-iw)/2:(oh-ih)/2"
+                        ])
+                        .toFormat("image2");
+                } else {
+                    command = command
+                        .outputOptions([
+                            "-t 10",
+                            "-vf", "scale='min(720,iw)':-2",
+                            "-c:v libx264",
+                            "-crf 23",
+                            "-preset fast",
+                            "-an"
+                        ])
+                        .toFormat("mp4");
+                }
+
+                command
+                    .on("end", () => {
+                        resolve({ success: true, processedPath: outPath });
+                    })
+                    .on("error", (err) => {
+                        console.error(`[ffmpeg] process media error:`, err);
+                        reject({ success: false, error: err.message });
+                    })
+                    .save(outPath);
+            });
+        } catch (error: any) {
+            console.error('API process media error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('api-cleanup-media', async (event, filePaths: string[]) => {
+        try {
+            for (const filePath of filePaths) {
+                if (filePath && fs.existsSync(filePath)) {
+                    await fs.promises.unlink(filePath).catch(() => { });
+                }
+            }
+            return { success: true };
+        } catch (error: any) {
+            console.error('API cleanup media error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('api-snapshot', async (event, payload: {
         taskId: string, type: string, message: string, username?: string, userId?: string, bypassZip?: boolean,
         thumbnailPath?: string, previewPath?: string
@@ -319,6 +383,9 @@ function setupIpcHandlers() {
             if (payload.userId) formData.append('userId', payload.userId);
             if (payload.bypassZip !== undefined) formData.append('bypassZip', payload.bypassZip.toString());
 
+            // Bypass API processing since we already did it locally
+            formData.append('bypassProcessing', 'true');
+
             if (payload.thumbnailPath && fs.existsSync(payload.thumbnailPath)) {
                 const buffer = await fs.promises.readFile(payload.thumbnailPath);
                 const blob = new Blob([buffer], { type: 'image/png' });
@@ -331,12 +398,54 @@ function setupIpcHandlers() {
                 formData.append('preview', blob, path.basename(payload.previewPath));
             }
 
+            let tempZipPath: string | null = null;
+            if (!payload.bypassZip) {
+                const workspacePath = store.get("workspacePath") as string | undefined;
+                const linkedTasks = store.get("linkedTasks", {}) as Record<string, string>;
+                const relativePath = linkedTasks[payload.taskId];
+
+                if (workspacePath && relativePath) {
+                    const targetDir = path.join(workspacePath, relativePath, payload.type);
+                    if (fs.existsSync(targetDir)) {
+                        tempZipPath = path.join(app.getPath('temp'), `snapshot-${Date.now()}.zip`);
+
+                        await new Promise<void>((resolve, reject) => {
+                            const output = fs.createWriteStream(tempZipPath!);
+                            const archive = archiver('zip', { zlib: { level: 9 } });
+
+                            output.on('close', () => resolve());
+                            archive.on('error', (err) => reject(err));
+
+                            archive.pipe(output);
+                            archive.directory(targetDir, false);
+                            archive.finalize();
+                        });
+
+                        const buffer = await fs.promises.readFile(tempZipPath);
+                        const blob = new Blob([buffer], { type: 'application/zip' });
+                        formData.append('contentsZip', blob, 'contents.zip');
+                    }
+                }
+            }
+
             const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
             const response = await fetch(`${apiUrl}/snapshot`, {
                 method: 'POST',
                 body: formData
             });
             const data = await response.json();
+
+            // Clean up temporary files
+            if (payload.thumbnailPath && fs.existsSync(payload.thumbnailPath)) {
+                await fs.promises.unlink(payload.thumbnailPath).catch(() => { });
+            }
+            if (payload.previewPath && fs.existsSync(payload.previewPath)) {
+                await fs.promises.unlink(payload.previewPath).catch(() => { });
+            }
+            if (tempZipPath && fs.existsSync(tempZipPath)) {
+                await fs.promises.unlink(tempZipPath).catch(() => { });
+            }
+
             return { success: response.ok, data, status: response.status };
         } catch (error: any) {
             console.error('API snapshot error:', error);
@@ -390,11 +499,90 @@ function setupIpcHandlers() {
 
     ipcMain.handle('api-rollback-snapshot', async (event, { taskId, commitId }: { taskId: string, commitId: string }) => {
         try {
+            const workspacePath = store.get("workspacePath") as string | undefined;
+            const linkedTasks = store.get("linkedTasks", {}) as Record<string, string>;
+            const relativePath = linkedTasks[taskId];
+
+            if (workspacePath && relativePath) {
+                const targetWorkspaceDir = path.join(workspacePath, relativePath);
+
+                let currentWindow = mainWindow;
+                if (!currentWindow || currentWindow.isDestroyed()) {
+                    const windows = BrowserWindow.getAllWindows();
+                    currentWindow = windows.length > 0 ? windows[0] : null;
+                }
+
+                const dialogOpts = {
+                    type: 'warning' as const,
+                    buttons: ['Yes, Rollback', 'Cancel'],
+                    defaultId: 1,
+                    title: 'Confirm Rollback',
+                    message: 'Are you sure you want to rollback to this snapshot?',
+                    detail: `This will clear the existing workspace folder for this task: ${targetWorkspaceDir}. ANY UNSAVED LOCAL CHANGES WILL BE LOST!`
+                };
+
+                const { response } = currentWindow
+                    ? await dialog.showMessageBox(currentWindow, dialogOpts)
+                    : await dialog.showMessageBox(dialogOpts);
+
+                if (response !== 0) {
+                    return { success: false, cancelled: true };
+                }
+            }
+
             const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+
+            // Determine snapshot type to properly extract it at the local path
+            let snapType = 'source';
+            try {
+                const snapshotRes = await fetch(`${apiUrl}/snapshots/${taskId}`);
+                if (snapshotRes.ok) {
+                    const snapshots = await snapshotRes.json();
+                    const snap = snapshots.find((s: any) => s.commitId === commitId);
+                    if (snap) {
+                        snapType = snap.type;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch snapshot details for type", e);
+            }
+
             const response = await fetch(`${apiUrl}/snapshots/${taskId}/${commitId}/rollback`, {
                 method: 'POST'
             });
             const data = await response.json();
+
+            if (response.ok && workspacePath && relativePath) {
+                const extract = require('extract-zip');
+                const targetWorkspaceDir = path.join(workspacePath, relativePath, snapType);
+
+                try {
+                    if (fs.existsSync(targetWorkspaceDir)) {
+                        await fs.promises.rm(targetWorkspaceDir, { recursive: true, force: true });
+                    }
+                    await fs.promises.mkdir(targetWorkspaceDir, { recursive: true });
+                } catch (e) {
+                    console.error("Failed to clear local workspace directory", e);
+                }
+
+                try {
+                    const zipUrl = `${apiUrl}/assets/${taskId}/${commitId}/contents.zip`;
+                    const zipRes = await fetch(zipUrl);
+
+                    if (zipRes.ok) {
+                        const arrayBuffer = await zipRes.arrayBuffer();
+                        const buffer = Buffer.from(arrayBuffer);
+                        const tempZipPath = path.join(app.getPath('temp'), `contents-${snapType}-${taskId}-${Date.now()}.zip`);
+                        await fs.promises.writeFile(tempZipPath, buffer);
+
+                        await extract(tempZipPath, { dir: targetWorkspaceDir });
+                        await fs.promises.unlink(tempZipPath);
+                    }
+                } catch (e) {
+                    console.error("Failed to extract contents locally", e);
+                }
+            }
+
             return { success: response.ok, data, status: response.status };
         } catch (error: any) {
             console.error('API rollback-snapshot error:', error);

@@ -24,5 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     submitSnapshot: (payload: any) => ipcRenderer.invoke('api-snapshot', payload),
     getSnapshots: (taskId: string) => ipcRenderer.invoke('api-get-snapshots', taskId),
     rollbackSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-rollback-snapshot', { taskId, commitId }),
-    deleteSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-delete-snapshot', { taskId, commitId })
+    deleteSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-delete-snapshot', { taskId, commitId }),
+    processMedia: (filePath: string, type: 'thumbnail' | 'preview') => ipcRenderer.invoke('api-process-media', { filePath, type }),
+    cleanupMedia: (filePaths: string[]) => ipcRenderer.invoke('api-cleanup-media', filePaths)
 });
