@@ -388,14 +388,14 @@ function setupIpcHandlers() {
 
             if (payload.thumbnailPath && fs.existsSync(payload.thumbnailPath)) {
                 const buffer = await fs.promises.readFile(payload.thumbnailPath);
-                const blob = new Blob([buffer], { type: 'image/png' });
-                formData.append('thumbnail', blob, path.basename(payload.thumbnailPath));
+                const file = new File([buffer], 'thumbnail.png', { type: 'image/png' });
+                formData.append('thumbnail', file);
             }
 
             if (payload.previewPath && fs.existsSync(payload.previewPath)) {
                 const buffer = await fs.promises.readFile(payload.previewPath);
-                const blob = new Blob([buffer], { type: 'video/mp4' });
-                formData.append('preview', blob, path.basename(payload.previewPath));
+                const file = new File([buffer], 'preview.mp4', { type: 'video/mp4' });
+                formData.append('preview', file);
             }
 
             let tempZipPath: string | null = null;
@@ -422,8 +422,8 @@ function setupIpcHandlers() {
                         });
 
                         const buffer = await fs.promises.readFile(tempZipPath);
-                        const blob = new Blob([buffer], { type: 'application/zip' });
-                        formData.append('contentsZip', blob, 'contents.zip');
+                        const file = new File([buffer], 'contents.zip', { type: 'application/zip' });
+                        formData.append('contentsZip', file);
                     }
                 }
             }

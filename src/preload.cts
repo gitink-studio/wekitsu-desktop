@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("api", {
     ping: () => "pong",
@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     rollbackSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-rollback-snapshot', { taskId, commitId }),
     deleteSnapshot: (taskId: string, commitId: string) => ipcRenderer.invoke('api-delete-snapshot', { taskId, commitId }),
     processMedia: (filePath: string, type: 'thumbnail' | 'preview') => ipcRenderer.invoke('api-process-media', { filePath, type }),
-    cleanupMedia: (filePaths: string[]) => ipcRenderer.invoke('api-cleanup-media', filePaths)
+    cleanupMedia: (filePaths: string[]) => ipcRenderer.invoke('api-cleanup-media', filePaths),
+    getPathForFile: (file: File) => webUtils.getPathForFile(file)
 });
