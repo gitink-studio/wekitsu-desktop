@@ -313,6 +313,34 @@ function setupIpcHandlers() {
         }
     });
 
+    ipcMain.handle('api-link-asset-task', async (event, payload: { assetId: string, taskId: string }) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/asset-task-links`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API linkAssetTask error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('api-get-linked-assets', async (event, taskId: string) => {
+        try {
+            const apiUrl = process.env.WEKITSU_API_URL || 'https://wekitsu-api.weloadin.lol';
+            const response = await fetch(`${apiUrl}/asset-task-links/task/${taskId}`);
+            const data = await response.json();
+            return { success: response.ok, data, status: response.status };
+        } catch (error: any) {
+            console.error('API getLinkedAssets error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('api-process-media', async (event, { filePath, type }: { filePath: string, type: 'thumbnail' | 'preview' }) => {
         try {
             const outPath = path.join(app.getPath('temp'), `processed-${type}-${Date.now()}.${type === 'thumbnail' ? 'png' : 'mp4'}`);
