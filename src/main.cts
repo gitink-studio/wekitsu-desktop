@@ -26,9 +26,9 @@ const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 
-// Simple red dot icon base64 for tray
-const iconBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADFJREFUOE9jZGRk/M+AhYGRkZGEHosGMDQwOAywYAByFNDXAAAAAElFTkSuQmCC';
-const icon = nativeImage.createFromDataURL(iconBase64);
+// Use the wekitsu logo for tray and window icon
+const iconUrl = path.join(__dirname, '../icon.png');
+const icon = nativeImage.createFromPath(iconUrl);
 
 const gotTheLock = app.requestSingleInstanceLock();
 

@@ -17,7 +17,8 @@
     "productName": "Wekitsu Desktop",
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "icon.png"
     ],
     "win": {
       "target": "nsis",
